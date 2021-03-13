@@ -402,7 +402,7 @@ export default Vue.extend({
     },
   },
   async mounted() {
-    if (!this.smAndUp) window.scrollTo(0, document.body.scrollHeight)
+    if (!this.smAndUp) window.scrollTo(0, 160)
     await this.loadControllerInfo()
   },
   methods: {
