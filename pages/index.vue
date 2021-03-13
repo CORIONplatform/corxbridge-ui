@@ -210,7 +210,6 @@
                 <a target="blank" :href="footerLinks[10]"><div>Support</div></a>
                 <a target="blank" :href="footerLinks[11]"><div>WALLET</div></a>
                 <a target="blank" :href="footerLinks[12]"><div>FAQ</div></a>
-                <!-- <div style="display: block"><v-btn color="#F53A1F" class="corx-footer-button px-8 mt-4" rounded dark>Get In Touch</v-btn></div> -->
               </v-col>
             </v-row>
           </v-col>
