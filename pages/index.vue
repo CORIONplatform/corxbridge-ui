@@ -216,7 +216,10 @@
           </v-col>
         </v-row>
       </v-container>
-      <div class="footer-tag">Powered by <a href="https://corion.io/">CorionX</a> & <a href="https://gotbit.io/">Gotbit</a> developers</div>
+      <div class="footer-tag">
+        Powered by
+        <a href="https://corion.io/" target="blank">CorionX</a> & <a href="https://gotbit.io/" target="blank">Gotbit</a> developers
+      </div>
     </v-footer>
   </v-app>
 </template>
