@@ -1,8 +1,10 @@
 <template>
   <v-app>
     <v-app-bar clipped-left app elevate-on-scroll color="#503FA1">
-      <v-img v-if="smAndUp" :src="assetsReqs[2]" max-height="60" max-width="220" style="position: absolute; left: 24px" />
-      <v-img v-else :src="assetsReqs[3]" max-height="42" max-width="42" style="position: absolute; left: 24px" />
+      <a href="http://corion.io" style="height: 100%; display: flex; align-items: center" target="blank">
+        <v-img v-if="smAndUp" :src="assetsReqs[2]" max-height="60" max-width="220" style="position: absolute; left: 24px" />
+        <v-img v-else :src="assetsReqs[3]" max-height="42" max-width="42" style="position: absolute; left: 24px" />
+      </a>
       <v-spacer />
       <v-toolbar-title style="color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
         {{ smAndUp ? dirChainName[0] : { EB: 'ETH', BE: 'BSC' }[direction] }}
@@ -11,7 +13,7 @@
       </v-toolbar-title>
       <v-spacer />
       <v-dialog v-model="dialog" max-width="290">
-        <template #activator="{ on, attrs }">
+        <template v-if="paramsInfo && paramsInfo.PSD" #activator="{ on, attrs }">
           <v-btn v-if="smAndUp" color="#F53A1F" class="corx-button" large rounded dark v-bind="attrs" v-on="on"><b>Connect</b></v-btn>
           <v-btn v-else color="#F53A1F" class="corx-button" fab small dark v-bind="attrs" v-on="on"><v-icon>mdi-link</v-icon></v-btn>
         </template>
@@ -57,8 +59,8 @@
                 <v-alert v-if="loading_controllerInfo" type="info">Loading controller info...</v-alert>
                 <v-alert v-else-if="loading_provider" type="info">Connecting provider...</v-alert>
                 <v-alert v-else-if="loading_contractInfo" type="info">Loading contract info...</v-alert>
-                <v-alert v-if="!!warningMessage" type="error">{{ warningMessage }}</v-alert>
-                <v-alert v-if="!!hintMessage" type="warning">{{ hintMessage }}</v-alert>
+                <v-alert v-if="!!errorMessage" type="error">{{ errorMessage }}</v-alert>
+                <v-alert v-if="!!warningMessage" type="warning">{{ warningMessage }}</v-alert>
                 <v-alert v-if="inBetween" type="info">Value sent. Sending request to controller. It might take up to 5min, please wait...</v-alert>
                 <v-alert v-if="!!successMessage" type="success">{{ successMessage }}</v-alert>
               </div>
@@ -85,9 +87,14 @@
                       <br />
                       Approved: <b>{{ BNStrToNumstr(currentApproved) }} CORX</b>
                       <br />
-                      Fee: <b>{{ paramsInfo ? Number(paramsInfo.FEE) / 100 : '...' }}%</b>
+                      Fee:
+                      <b>{{
+                        paramsInfo && costsInfo
+                          ? `${paramsInfo.FEE > 0 ? `${Number(paramsInfo.FEE) / 100}% + ` : ''}` + `${_feeBNStr ? `${BNStrToNumstr(_feeBNStr)} CORX` : ''}`
+                          : '...'
+                      }}</b>
                       <br />
-                      Min: <b>{{ BNStrToNumstr(minBNStr, 0).split('.')[0] }} CORX</b>
+                      Min: <b>{{ BNStrToNumstr(minBNStr) }} CORX</b>
                     </v-card-text>
                   </v-container>
                 </v-col>
@@ -128,7 +135,7 @@
                       <span>
                         Will receive:
                         <b>
-                          {{ amountEnough && paramsInfo ? '~' + BNStrToNumstr(substractFee(amountBN.toString(), paramsInfo.FEE).res.toString()) : '...' }}
+                          {{ amountEnough && controllerInfoOk ? '~' + BNStrToNumstr(substractFee(amountBN.toString(), feeBNStr).toString()) : '...' }}
                           CORX
                         </b>
                       </span>
@@ -159,7 +166,7 @@
             </v-card>
             <v-row justify="center" style="margin: 16px 0 48px">
               <v-col align="right">
-                <v-btn color="white" large text :disabled="loading_request || loading_contractInfo" @click="switchDirection">
+                <v-btn color="white" large text :disabled="loading_request || loading_contractInfo || preShutDown" @click="switchDirection">
                   <b>Change direction{{ '  ' }}</b>
                   <v-icon>mdi-swap-horizontal</v-icon>
                 </v-btn>
@@ -172,7 +179,11 @@
     <v-footer color="#0c091d" class="py-15" style="border-top: 4px solid #f53a1f">
       <v-container>
         <v-row justify="center" style="color: white" dark>
-          <v-col><v-img :src="assetsReqs[4]" width="240" height="48" cols="12" sm="4"></v-img></v-col>
+          <v-col cols="12" sm="4">
+            <a href="http://corion.io" style="height: 240px; width: 48px" target="blank">
+              <v-img :src="assetsReqs[4]" width="240" height="48" />
+            </a>
+          </v-col>
           <v-col cols="12" sm="8">
             <v-row>
               <v-col class="corx-footer-sector corx-footer-sector-icons" cols="12" sm="4">
@@ -267,10 +278,8 @@ function BNStrToNumstr(str: string, precision = 3): string {
   if (str.length <= 8) return removeTrailingZeros(('0.' + '00000000'.substr(0, 8 - str.length) + str).substr(0, 8 - str.length + precision + 2))
   else return [str.substr(0, str.length - 8), str.slice(-8)].join('.').substr(0, str.length - 8 + precision + 1)
 }
-function substractFee(amount: string, FEE: string) {
-  const fee = BigNumber.from(amount).mul(FEE).div(10000)
-  const res = BigNumber.from(amount).sub(fee)
-  return { res, fee }
+function substractFee(amount: string, fee: string) {
+  return BigNumber.from(amount).sub(fee)
 }
 const footerLinks = [
   'https://www.facebook.com/CorionFoundation',
@@ -309,12 +318,17 @@ export default Vue.extend({
       balanceB: '',
       inputAmount: '',
       paramsInfo: null as {
-        FEE: string
-        MIN: string
+        CTF: number
+        FTM: number
+        FEE: number
         PSD: boolean
       } | null,
+      costsInfo: null as {
+        BE: string
+        EB: string
+      } | null,
+      errorMessage: '',
       warningMessage: '',
-      hintMessage: '',
       successMessage: '',
       loading_swapping: false,
       loading_approve: false,
@@ -350,15 +364,21 @@ export default Vue.extend({
       return { EB: this.approvedE, BE: this.approvedB }[this.direction]
     },
     // TECHNICAL OK
+    preShutDown(): boolean {
+      return !!this.paramsInfo?.PSD
+    },
     contractInfoOk(): boolean {
       return !!this.currentApproved && !!this.dirBalance[0]
+    },
+    controllerInfoOk(): boolean {
+      return !!this.paramsInfo && !!this.costsInfo
     },
     allSafe(): boolean {
       return (
         !!this.wallet &&
-        !!this.paramsInfo &&
+        this.controllerInfoOk &&
         this.contractInfoOk &&
-        !this.warningMessage &&
+        !this.errorMessage &&
         !this.loading_controllerInfo &&
         !this.loading_provider &&
         !this.loading_contractInfo
@@ -382,6 +402,7 @@ export default Vue.extend({
       return this.amountBN.lte(this.dirBalance[0])
     },
     approvedEnough(): boolean {
+      if (!this.controllerInfoOk) return false
       return this.approvedBN.gte(this.minBNStr)
     },
     // BUTTONS DISABLED
@@ -396,11 +417,19 @@ export default Vue.extend({
       return this.amountValid ? numstrToBN(this.inputAmount) : BigNumber.from(0)
     },
     approvedBN(): BigNumber {
-      return BigNumber.from(this.currentApproved)
+      return BigNumber.from(this.currentApproved || 0)
+    },
+    _feeBNStr(): string {
+      if (!this.controllerInfoOk) return ''
+      return BigNumber.from(this.costsInfo![this.direction]).mul(this.paramsInfo!.CTF).div(100).toString()
+    },
+    feeBNStr(): string {
+      if (!this.controllerInfoOk) return ''
+      return this.amountBN.mul(this.paramsInfo!.FEE).div(10000).add(this._feeBNStr).toString()
     },
     minBNStr(): string {
-      if (!this.paramsInfo) return ''
-      return BigNumber.from(this.paramsInfo.MIN).toString()
+      if (!this.controllerInfoOk) return ''
+      return BigNumber.from(this.costsInfo![this.direction]).mul(this.paramsInfo!.CTF).mul(this.paramsInfo!.FTM).mul(120).div(1000000).toString()
     },
   },
   async mounted() {
@@ -411,17 +440,21 @@ export default Vue.extend({
     BNStrToNumstr,
     substractFee,
     async switchDirection() {
-      this.warningMessage = ''
+      this.errorMessage = ''
       this.successMessage = ''
-      this.hintMessage = ''
+      this.warningMessage = ''
       this.hashes = null
       this.direction = this.direction === 'EB' ? 'BE' : 'EB'
+      if (this.preShutDown) {
+        this.errorMessage = 'Controller will soon shut down for maintenance. Usage is blocked. Please wait'
+        return
+      }
       if (!this.provider) return
       if ((await this.provider.getNetwork())?.chainId !== { EB: 1, BE: 56 }[this.direction])
-        this.warningMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
-      else if (BigNumber.from(this.dirBalance[0]).lt(this.minBNStr) && !this.warningMessage)
-        this.warningMessage = 'Your balance is lower than minimum amount. Usage is blocked'
-      else this.warningMessage = ''
+        this.errorMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
+      else if (BigNumber.from(this.dirBalance[0]).lt(this.minBNStr) && !this.errorMessage)
+        this.errorMessage = 'Your balance is lower than minimum amount. Usage is blocked'
+      else this.errorMessage = ''
     },
     async clickConnectWalletconnect() {
       if (this.providerType === 'M') this.wallet = ''
@@ -439,10 +472,10 @@ export default Vue.extend({
         this.signer = this.provider.getSigner()
         this.wallet = await this.signer.getAddress()
         if ((await this.provider.getNetwork()).chainId !== { EB: 1, BE: 56 }[this.direction])
-          this.warningMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
-        else this.warningMessage = ''
+          this.errorMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
+        else this.errorMessage = ''
       } catch (error) {
-        this.warningMessage = 'Could not connect Walletconnect. Error: ' + error.message
+        this.errorMessage = 'Could not connect Walletconnect. Error: ' + error.message
         console.error(error)
       }
       this.loading_provider = false
@@ -463,10 +496,10 @@ export default Vue.extend({
         this.signer = this.provider.getSigner()
         this.wallet = await this.signer.getAddress()
         if ((await this.provider.getNetwork()).chainId !== { EB: 1, BE: 56 }[this.direction])
-          this.warningMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
-        else this.warningMessage = ''
+          this.errorMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
+        else this.errorMessage = ''
       } catch (error) {
-        this.warningMessage = 'Could not connect MetaMask. Error: ' + error.message
+        this.errorMessage = 'Could not connect MetaMask. Error: ' + error.message
         console.error(error)
       }
       this.loading_provider = false
@@ -483,10 +516,13 @@ export default Vue.extend({
       this.loading_controllerInfo = true
       try {
         this.paramsInfo = ((await db.collection('config').doc('changeables').get()).data() as any) || null
+        this.costsInfo = (await Axios.get('https://corxbridge.uc.r.appspot.com/info/costs')).data
         if (!this.paramsInfo) throw new Error('Received invalid data from firestore')
-        if (this.paramsInfo.PSD) this.warningMessage = 'Controller will soon shut down for maintenance. Usage is blocked. Please wait'
+        if (!this.costsInfo) throw new Error('Received invalid data from controller')
+        console.log(this.costsInfo)
+        if (this.preShutDown) this.errorMessage = 'Controller will soon shut down for maintenance. Usage is blocked. Please wait'
       } catch (error) {
-        this.warningMessage = 'Could not load info from controller. Usage is blocked. Try refreshing the page, try later or contact support'
+        this.errorMessage = 'Could not load info from controller. Usage is blocked. Try refreshing the page, try later or contact support'
         console.error(error)
       }
       this.loading_controllerInfo = false
@@ -502,11 +538,11 @@ export default Vue.extend({
         this.approvedE = Ea
         this.balanceB = Bb
         this.balanceE = Eb
-        if (BigNumber.from(this.dirBalance[0]).lt(this.minBNStr) && !this.warningMessage)
-          this.warningMessage = 'Your balance is lower than minimum amount. Usage is blocked'
+        if (BigNumber.from(this.dirBalance[0]).lt(this.minBNStr) && !this.errorMessage)
+          this.errorMessage = 'Your balance is lower than minimum amount. Usage is blocked'
       } catch (error) {
-        if (!this.warningMessage)
-          this.warningMessage = 'Could not load info from blockchain. Usage is blocked. Try refreshing the page, try later or contact support'
+        if (!this.errorMessage)
+          this.errorMessage = 'Could not load info from blockchain. Usage is blocked. Try refreshing the page, try later or contact support'
       }
       this.loading_contractInfo = false
     },
@@ -520,7 +556,7 @@ export default Vue.extend({
         this.inputAmount = ''
         await this.requestSwap()
       } catch (error) {
-        this.hintMessage = error.message
+        this.warningMessage = error.message
         console.error(error)
       }
       this.inBetween = false
