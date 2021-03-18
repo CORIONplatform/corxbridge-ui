@@ -13,8 +13,9 @@
       </v-toolbar-title>
       <v-spacer />
       <v-dialog v-model="dialog" max-width="290">
-        <template v-if="paramsInfo && paramsInfo.PSD" #activator="{ on, attrs }">
-          <v-btn v-if="smAndUp" color="#F53A1F" class="corx-button" large rounded dark v-bind="attrs" v-on="on"><b>Connect</b></v-btn>
+        <template #activator="{ on, attrs }">
+          <v-btn v-if="!paramsInfo || paramsInfo.PSD" style="position: absolute !important; right: 24px" large rounded disabled><b>Connect</b></v-btn>
+          <v-btn v-else-if="smAndUp" color="#F53A1F" class="corx-button" large rounded dark v-bind="attrs" v-on="on"><b>Connect</b></v-btn>
           <v-btn v-else color="#F53A1F" class="corx-button" fab small dark v-bind="attrs" v-on="on"><v-icon>mdi-link</v-icon></v-btn>
         </template>
         <v-card>
@@ -59,16 +60,16 @@
                 <v-alert v-if="loading_controllerInfo" type="info">Loading controller info...</v-alert>
                 <v-alert v-else-if="loading_provider" type="info">Connecting provider...</v-alert>
                 <v-alert v-else-if="loading_contractInfo" type="info">Loading contract info...</v-alert>
-                <v-alert v-if="!!errorMessage" type="error">{{ errorMessage }}</v-alert>
-                <v-alert v-if="!!warningMessage" type="warning">{{ warningMessage }}</v-alert>
+                <v-alert v-if="errorMessage" type="error">{{ errorMessage }}</v-alert>
+                <v-alert v-if="warningMessage" type="warning">{{ warningMessage }}</v-alert>
                 <v-alert v-if="inBetween" type="info">Value sent. Sending request to controller. It might take up to 5min, please wait...</v-alert>
-                <v-alert v-if="!!successMessage" type="success">{{ successMessage }}</v-alert>
+                <v-alert v-if="hashes" type="success">Success! Save transaction hashes below</v-alert>
               </div>
             </div>
             <v-card flat>
               <div class="cardtop-address">{{ wallet }}</div>
-              <v-row justify="center" align="stretch">
-                <v-col cols="12" lg="3" style="position: relative">
+              <v-row justify="center" justify-lg="space-between" align="stretch">
+                <v-col cols="12" lg="3" style="position: relative; min-width: 296px">
                   <v-img
                     :src="dirChainLogo[0]"
                     position="left"
@@ -98,8 +99,8 @@
                     </v-card-text>
                   </v-container>
                 </v-col>
-                <v-col cols="11" lg="6" class="align-self-center">
-                  <v-container>
+                <v-col class="align-self-center flex-grow-1">
+                  <v-container class="px-7 px-lg-3">
                     <v-text-field
                       v-if="contractInfoOk"
                       v-model="inputAmount"
@@ -113,7 +114,7 @@
                     <v-text-field v-else label="Amount" disabled />
                   </v-container>
                 </v-col>
-                <v-col cols="12" lg="3" style="position: relative">
+                <v-col cols="12" lg="3" style="position: relative; min-width: 296px">
                   <v-img
                     :src="dirChainLogo[1]"
                     position="right"
@@ -166,7 +167,7 @@
             </v-card>
             <v-row justify="center" style="margin: 16px 0 48px">
               <v-col align="right">
-                <v-btn color="white" large text :disabled="loading_request || loading_contractInfo || preShutDown" @click="switchDirection">
+                <v-btn color="white" large text :disabled="loading_request || loading_contractInfo || preShutDown" @click="clickChangeDirection">
                   <b>Change direction{{ '  ' }}</b>
                   <v-icon>mdi-swap-horizontal</v-icon>
                 </v-btn>
@@ -327,9 +328,8 @@ export default Vue.extend({
         BE: string
         EB: string
       } | null,
-      errorMessage: '',
+      errorMessoge_misc: '',
       warningMessage: '',
-      successMessage: '',
       loading_swapping: false,
       loading_approve: false,
       loading_request: false,
@@ -339,9 +339,34 @@ export default Vue.extend({
       inBetween: false,
       hashes: null as { txHashCollect: string; txHashDispense: string } | null,
       dialog: false,
+      chainId: null as null | number,
     }
   },
   computed: {
+    // ERRORS
+    err_controllerInfo(): boolean {
+      return !this.loading_controllerInfo && !this.controllerInfoOk
+    },
+    err_shutDown(): boolean {
+      return this.preShutDown
+    },
+    err_chainId(): boolean {
+      return !!this.chainId && this.chainId !== { EB: 1, BE: 56 }[this.direction]
+    },
+    err_balanceLow(): boolean {
+      return !!this.dirBalance[0] && BigNumber.from(this.dirBalance[0]).lt(this.minBNStr)
+    },
+    errorMessage(): string {
+      return this.err_controllerInfo
+        ? 'Could not load info from controller. Usage is blocked. Try refreshing the page'
+        : this.err_shutDown
+        ? 'Controller will soon shut down for maintenance. Usage is blocked. Please wait'
+        : this.err_chainId
+        ? `You selected wrong network for this direction. Select ${this.dirChainName[0]}${this.providerType === 'M' ? '' : ' and refresh the page'}`
+        : this.err_balanceLow
+        ? 'Your balance is lower than minimum amount. Usage is blocked'
+        : this.errorMessoge_misc
+    },
     smAndUp(): boolean {
       return (this as any).$vuetify.breakpoint.smAndUp
     },
@@ -439,22 +464,14 @@ export default Vue.extend({
   methods: {
     BNStrToNumstr,
     substractFee,
-    async switchDirection() {
-      this.errorMessage = ''
-      this.successMessage = ''
+    async clickChangeDirection() {
+      this.switchDirection()
+      this.chainId = (await this.provider?.getNetwork())?.chainId || null
+    },
+    switchDirection() {
       this.warningMessage = ''
       this.hashes = null
       this.direction = this.direction === 'EB' ? 'BE' : 'EB'
-      if (this.preShutDown) {
-        this.errorMessage = 'Controller will soon shut down for maintenance. Usage is blocked. Please wait'
-        return
-      }
-      if (!this.provider) return
-      if ((await this.provider.getNetwork())?.chainId !== { EB: 1, BE: 56 }[this.direction])
-        this.errorMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
-      else if (BigNumber.from(this.dirBalance[0]).lt(this.minBNStr) && !this.errorMessage)
-        this.errorMessage = 'Your balance is lower than minimum amount. Usage is blocked'
-      else this.errorMessage = ''
     },
     async clickConnectWalletconnect() {
       if (this.providerType === 'M') this.wallet = ''
@@ -471,11 +488,9 @@ export default Vue.extend({
         this.provider = new providers.Web3Provider(wc)
         this.signer = this.provider.getSigner()
         this.wallet = await this.signer.getAddress()
-        if ((await this.provider.getNetwork()).chainId !== { EB: 1, BE: 56 }[this.direction])
-          this.errorMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
-        else this.errorMessage = ''
+        this.chainId = (await this.provider.getNetwork())?.chainId || null
       } catch (error) {
-        this.errorMessage = 'Could not connect Walletconnect. Error: ' + error.message
+        this.errorMessoge_misc = 'Could not connect Walletconnect. Error: ' + error.message
         console.error(error)
       }
       this.loading_provider = false
@@ -484,6 +499,12 @@ export default Vue.extend({
     async clickConnectMetamask() {
       if (this.providerType === 'W') this.wallet = ''
       await this.connectMetamask()
+      ;(window.ethereum as any).on('chainChanged', async (chainId: string) => {
+        console.log({ chainId })
+        this.direction = chainId === '0x38' ? 'BE' : 'EB'
+        await this.connectMetamask()
+        if (this.contractInfoOk && this.approvedNonZero) this.restoreInputAmount()
+      })
       if (this.wallet) await this.loadContractInfo()
       if (this.contractInfoOk && this.approvedNonZero) this.restoreInputAmount()
     },
@@ -495,11 +516,10 @@ export default Vue.extend({
         this.provider = new providers.Web3Provider((window.ethereum as any) || window.web3)
         this.signer = this.provider.getSigner()
         this.wallet = await this.signer.getAddress()
-        if ((await this.provider.getNetwork()).chainId !== { EB: 1, BE: 56 }[this.direction])
-          this.errorMessage = `You selected wrong network for this direction. Make sure you selected ${this.dirChainName[0]} and refresh the page`
-        else this.errorMessage = ''
+        this.chainId = (await this.provider.getNetwork())?.chainId || null
+        this.direction = this.chainId === 56 ? 'BE' : 'EB'
       } catch (error) {
-        this.errorMessage = 'Could not connect MetaMask. Error: ' + error.message
+        this.errorMessoge_misc = 'Could not connect MetaMask. Error: ' + error.message
         console.error(error)
       }
       this.loading_provider = false
@@ -520,9 +540,7 @@ export default Vue.extend({
         if (!this.paramsInfo) throw new Error('Received invalid data from firestore')
         if (!this.costsInfo) throw new Error('Received invalid data from controller')
         console.log(this.costsInfo)
-        if (this.preShutDown) this.errorMessage = 'Controller will soon shut down for maintenance. Usage is blocked. Please wait'
       } catch (error) {
-        this.errorMessage = 'Could not load info from controller. Usage is blocked. Try refreshing the page, try later or contact support'
         console.error(error)
       }
       this.loading_controllerInfo = false
@@ -538,11 +556,8 @@ export default Vue.extend({
         this.approvedE = Ea
         this.balanceB = Bb
         this.balanceE = Eb
-        if (BigNumber.from(this.dirBalance[0]).lt(this.minBNStr) && !this.errorMessage)
-          this.errorMessage = 'Your balance is lower than minimum amount. Usage is blocked'
       } catch (error) {
-        if (!this.errorMessage)
-          this.errorMessage = 'Could not load info from blockchain. Usage is blocked. Try refreshing the page, try later or contact support'
+        console.error(error)
       }
       this.loading_contractInfo = false
     },
@@ -586,7 +601,6 @@ export default Vue.extend({
         throw new Error(error.response.data)
       }
       await this.loadContractInfo()
-      this.successMessage = 'Success! Save transaction hashes below'
       this.loading_request = false
     },
   },
